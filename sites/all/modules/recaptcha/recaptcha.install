@@ -1,0 +1,15 @@
+<?php
+
+/**
+ * @file
+ * Provides install, updated, and uninstall functions for recaptcha.
+ */
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function recaptcha_uninstall() {
+  // Delete all the recaptcha variables and then clear the variable cache  
+  db_query("delete from {variable} where name like '%s'", 'recaptcha_%');
+  cache_clear_all('variables', 'cache');
+}

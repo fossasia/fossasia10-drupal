@@ -1,0 +1,12 @@
+;$Id: job_scheduler.info,v 1.1 2010/09/12 03:02:05 alexb Exp $
+name = Job Scheduler
+description = Scheduler API
+core = 6.x
+php = 5.2
+
+; Information added by drupal.org packaging script on 2010-09-14
+version = "6.x-1.0-beta3"
+core = "6.x"
+project = "job_scheduler"
+datestamp = "1284491510"
+

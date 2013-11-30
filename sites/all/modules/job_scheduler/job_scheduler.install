@@ -1,0 +1,110 @@
+<?php
+// $Id: job_scheduler.install,v 1.4 2010/09/12 03:58:39 alexb Exp $
+
+/**
+ * @file
+ * Schema definitions install/update/uninstall hooks.
+ */
+
+/**
+ * Implementation of hook_schema().
+ */
+function job_scheduler_schema() {
+  $schema = array();
+  $schema['job_schedule'] = array(
+    'description' => t('Schedule of jobs to be executed.'),
+    'fields' => array(
+      'callback' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Callback to be invoked.',
+      ),
+      'type' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Type identifier of the job.',
+      ),
+      'id' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'unsigned' => TRUE,
+        'description' => 'Numeric identifier of the job.',
+      ),
+      'last' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'default' => 0,
+        'not null' => TRUE,
+        'description' => 'Timestamp when a job was last executed.',
+      ),
+      'period' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'default' => 0,
+        'not null' => TRUE,
+        'description' => 'Time period after which job is to be executed.',
+      ),
+      'next' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'default' => 0,
+        'not null' => TRUE,
+        'description' => 'Timestamp when a job is to be executed (next = last + period), used for fast ordering.',
+      ),
+      'periodic' => array(
+        'type' => 'int',
+        'size' => 'small',
+        'unsigned' => TRUE,
+        'default' => 0,
+        'not null' => TRUE,
+        'description' => 'If true job will be automatically rescheduled with same period.',
+      ),
+      'scheduled' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'default' => 0,
+        'not null' => TRUE,
+        'description' => 'Timestamp when a job was scheduled. 0 if a job is currently not scheduled.',
+      ),
+    ),
+    'indexes' => array(
+      'callback_type_id' => array('callback', 'type', 'id'),
+      'callback_type' => array('callback', 'type'),
+      'next' => array('next'),
+      'scheduled' => array('scheduled'),
+    ),
+  );
+  return $schema;
+}
+
+/**
+ * Implementation of hook_install().
+ */
+function job_scheduler_install() {
+  // Create tables.
+  drupal_install_schema('job_scheduler');
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function job_scheduler_uninstall() {
+  // Remove tables.
+  drupal_uninstall_schema('job_scheduler');
+}
+
+/**
+ * Fix indexes on next.
+ */
+function job_scheduler_update_6101() {
+  $ret = array();
+  db_drop_index($ret, 'job_schedule', 'last_period');
+  db_drop_index($ret, 'job_schedule', 'periodic');
+  db_add_index($ret, 'job_schedule', 'next', array('next'));
+  return $ret;
+}

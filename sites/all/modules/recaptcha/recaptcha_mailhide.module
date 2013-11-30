@@ -1,0 +1,115 @@
+<?php
+
+/**
+ * @file
+ * Protects email addresses using the reCAPTCHA web service.
+ */
+
+/**
+* Implementation of hook_help().
+*/
+function recaptcha_mailhide_help($path, $arg) {
+  $output = '';
+  switch ($path) {
+    case 'admin/modules#name':
+      $output .= t('reCAPTCHA');
+      break;
+    case 'admin/modules#description':
+      $output .= t('Uses the <a href="@url" target="_blank">reCAPTCHA</a> web service to protect email addresses.', array('@url' => url('http://www.recaptcha.net')));
+      break;
+    case 'admin/help#recaptcha':
+      $output .= '<p>'.
+        t('Uses the reCAPTCHA web service to protect email addresses. For more information on what reCAPTCHA Mailhide is, visit <a href="@url" target="_blank">the official website</a>.', array('@url' => url('http://mailhide.recaptcha.net'))) .
+        '</p><h3>'.
+        t('Configuration') .
+        '</h3><p>'.
+        t('Head over to the <a href="@inputformats">input format settings</a> and add the <a href="@url" target="_blank">reCAPTCHA Mailhide</a> input filter to hide posted emails.', array('@inputformats' => url('admin/settings/filters'), '@url' => url('http://mailhide.recaptcha.net'))) .
+        '</p>';
+      break;
+  }
+  return $output;
+}
+
+/**
+ * Implementation of hook_filter().
+ */ 
+function recaptcha_mailhide_filter($op, $delta = 0, $format = -1, $text = '') {
+  switch ($op) {
+    case 'list':
+      return array(0 => t('reCAPTCHA Mailhide'));
+
+    case 'description':
+      return recaptcha_mailhide_filter_tips($delta, $format);
+
+    case 'settings':
+        _recaptcha_mailhide_load_library();
+        $form['filter_recaptcha'] = array('#type' => 'fieldset', '#title' => t('reCAPTCHA Mailhide Keys'), '#collapsible' => TRUE, '#collapsed' => FALSE);
+        $form['filter_recaptcha']['recaptcha_mailhide_public_key'] = array(
+          '#type' => 'textfield',
+          '#title' => t('Public Key'),
+          '#default_value' => variable_get('recaptcha_mailhide_public_key', ''),
+          '#maxlength' => 50,
+          '#description' => t('Your public Mailhide key obtained from <a href="@url" target="_blank">reCAPTCHA</a>.', array('@url' => 'http://www.google.com/recaptcha/mailhide/apikey')),
+          );
+        $form['filter_recaptcha']['recaptcha_mailhide_private_key'] = array(
+          '#type' => 'textfield',
+          '#title' => t('Private Key'),
+          '#default_value' => variable_get('recaptcha_mailhide_private_key', ''),
+          '#maxlength' => 50,
+          '#description' => t('Your private Mailhide key obtained from <a href="@url" target="_blank">reCAPTCHA</a>.', array('@url' => 'http://www.google.com/recaptcha/mailhide/apikey')),
+          );
+        return $form;
+      break;
+
+    case 'process':
+      global $_recaptcha_mailhide_public_key, $_recaptcha_mailhide_private_key, $_recaptcha_mailhide_nokey_warn;
+      _recaptcha_mailhide_load_library();
+      $_recaptcha_mailhide_public_key = variable_get('recaptcha_mailhide_public_key', '');
+      $_recaptcha_mailhide_private_key = variable_get('recaptcha_mailhide_private_key', '');
+
+      $text   = ' '. $text .' ';
+      $text = preg_replace_callback("!(<p>|<li>|<br\s*/?>|[ \n\r\t\(])([A-Za-z0-9._-]+@[A-Za-z0-9._+-]+\.[A-Za-z]{2,4})([.,?]?)(?=(</p>|</li>|<br\s*/?>|[ \n\r\t\)]))!i", '_recaptcha_replace', $text);
+      $text = substr($text, 1, -1);
+
+      unset($_recaptcha_mailhide_public_key);
+      unset($_recaptcha_mailhide_private_key);
+      unset($_recaptcha_mailhide_nokey_warn);
+      return $text;
+
+    default:
+      return $text;
+  }
+}
+
+/**
+ * Implementation of hook_filter_tips().
+ */
+function recaptcha_mailhide_filter_tips($delta, $format, $long = false) {
+  return t('E-Mail addresses are hidden with <a href="@url" target="_blank">reCAPTCHA Mailhide</a>.', array('@url' => 'http://mailhide.recaptcha.net/'));
+}
+
+/**
+ * Private reCAPTCHA function to replace an email regex match
+ */
+function _recaptcha_replace($match) {
+  global $_recaptcha_mailhide_public_key, $_recaptcha_mailhide_private_key, $_recaptcha_mailhide_nokey_warn;
+  // recaptchalib will die if we invoke without setting the keys. Fail gracefully in this case.
+  if (empty($_recaptcha_mailhide_public_key) || empty($_recaptcha_mailhide_private_key)) {
+    if ($_recaptcha_mailhide_nokey_warn != TRUE) {
+      drupal_set_message(t('Addresses cannot be hidden because the administrator has not set the reCAPTCHA Mailhide keys.'), 'error');
+      $_recaptcha_mailhide_nokey_warn = TRUE;
+    }
+    $email = $match[2];
+  }
+  else {
+    $email = recaptcha_mailhide_html($_recaptcha_mailhide_public_key, $_recaptcha_mailhide_private_key, $match[2]);
+  }
+  return $match[1] . $email . $match[3];
+}
+
+/**
+ * Load the recaptcha library.
+ */
+function _recaptcha_mailhide_load_library() {
+  module_load_include('php', 'recaptcha', 'recaptcha/recaptchalib');
+}

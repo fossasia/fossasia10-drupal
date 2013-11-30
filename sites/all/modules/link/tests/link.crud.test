@@ -1,0 +1,48 @@
+<?php
+
+/**
+ * @file
+ * Basic CRUD simpletests for the link module, based off of content.crud.test in CCK.
+ */
+
+// Need to include content.crud.test so we can inherit from it's ContentCrudTestCase.
+require_once(drupal_get_path('module', 'content') .'/tests/content.crud.test');
+
+class LinkContentCrudTest extends ContentCrudTestCase {
+  
+  function getInfo() {
+    return array(
+      'name' => t('Link CRUD - Basic API tests'),
+      'description' => t('Tests the field CRUD (create, read, update, delete) API. <strong>Requires <a href="@schema_link">Schema module</a>.</strong>', array('@schema_link' => 'http://www.drupal.org/project/schema')),
+      'group' => t('Link'),
+    );
+  }
+  
+  function setUp() {
+    parent::setUp('link'); 
+    $this->loginWithPermissions();
+  }
+  
+  /**
+   * All we're doing here is creating a content type, creating a simple link field
+   * on that content type, and making sure said field exists in the database.
+   */
+  function testLinkCreateFieldAPI() {
+    $this->acquireContentTypes(1);
+    
+    $field = $this->createField(array('type' => 'link', 'widget_type' => 'link'), 0);
+    
+    //$this->pass(print_r($this->content_types, TRUE));
+    //$this->pass(print_r($field, TRUE));
+    
+    $table_schema = drupal_get_schema();
+    //$this->pass(print_r(array_keys($table_schema), TRUE));
+    // Check the schema - the values should be in the per-type table.
+    $this->assertSchemaMatchesTables(array(
+      'per_type' => array(
+        $this->content_types[0]->type => array($field['field_name'] => array('url', 'title', 'attributes')),
+      ),
+    ));
+  }
+  
+}

@@ -1,0 +1,764 @@
+<?php
+
+/**
+ * @file
+ * Basic simpletests to test options on link module.
+ */
+
+// Let's include the parent class.
+module_load_include('test', 'content', 'tests/content.crud');
+
+class LinkAttributeCrudTest extends ContentCrudTestCase {
+
+  private $zebra;
+  
+  public $permissions = array(
+      'access content',
+      'administer content types',
+      'administer nodes',
+      'administer filters',
+      'access comments',
+      'post comments',
+      'post comments without approval',
+      'access administration pages',
+  );
+
+  function getInfo() {
+    return array(
+      'name' => t('Link Attribute Tests'),
+      'description' => t('Tests the field attributes, making sure they appear in various displayed situations.'),
+      'group' => t('Link'),
+    );
+  }
+  
+  function setUp() {
+    $this->zebra = 0;
+    parent::setUp('link'); 
+    $this->loginWithPermissions($this->permissions);
+  }
+  
+  function createLink($url, $title, $attributes = array()) {
+    return array(
+      'url' => $url,
+      'title' => $title,
+      'attributes' => $attributes,
+    );
+  }
+  
+  /**
+   * This usually isn't needed.  $this->pass($this->content); will usually
+   * display the current page.
+   */
+  private function outputScreenContents($description, $basename) {
+    // This is a hack to get a directory that won't be cleaned up by simpletest
+    $file_dir = file_directory_path() .'/../simpletest_output_pages';
+    if (!is_dir($file_dir)) {
+      mkdir($file_dir, 0777, TRUE);
+    }
+    $output_path = "$file_dir/$basename." . $this->randomName(10) . '.html';
+    $rv = file_put_contents($output_path, $this->drupalGetContent());
+    $this->pass("$description: Contents of result page are ". l('here', $output_path));
+  }
+  
+  private function assertLinkOnNode($field_name, $link_value, $message = '', $group = 'Other') {    
+    $this->zebra++;
+    $zebra_string = ($this->zebra % 2 == 0) ? 'even' : 'odd';
+    $cssFieldLocator = 'field-'. str_replace('_', '-', $field_name);
+    $this->assertPattern('@<div class="field field-type-link '. $cssFieldLocator .'".*<div class="field-item '. $zebra_string .'">\s*'. $link_value .'\s*</div>@is',
+                         $message,
+                         $group);
+  }
+  
+  /**
+   * A simple test that just creates a new node type, adds a link field to it, creates a new node of that type, and makes sure
+   * that the node is being displayed.
+   */
+  function testBasic() {
+    $this->acquireContentTypes(1);
+    variable_set('node_options_'. $this->content_types[0]->name, array('status', 'promote'));
+    $field_settings = array(
+      'type' => 'link',
+      'widget_type' => 'link',
+      'type_name' => $this->content_types[0]->name,
+      'attributes' => array(), // <-- This is needed or we have an error.
+    );
+
+    $field = $this->createField($field_settings, 0);
+    //$this->pass('<pre>'. print_r($field, TRUE) .'</pre>');
+    $field_db_info = content_database_info($field);
+
+    $this->acquireNodes(2);
+
+    $node = node_load($this->nodes[0]->nid);
+    $node->promote = 1; // We want this to show on front page for the teaser test.
+    $node->{$field['field_name']}[0] = $this->createLink('http://www.example.com', 'Test Link');
+    node_save($node);
+
+    // Does this display on the node page?
+    $this->drupalGet('node/'. $this->nodes[0]->nid);
+    $this->assertLinkOnNode($field['field_name'], l('Test Link', 'http://www.example.com'));
+    
+    // Does this display on the front page?
+    $this->drupalGet('<front>');
+    // reset the zebra!
+    $this->zebra = 0;
+    $this->assertLinkOnNode($field['field_name'], l('Test Link', 'http://www.example.com'));
+  }
+  
+  /**
+   * This test sees that we can create a link field with a defined class, and make sure
+   * that class displays properly when the link is displayed.
+   */
+  function testLinkWithClassOnField() {
+    $this->acquireContentTypes(1);
+    $field_settings = array(
+      'type' => 'link',
+      'widget_type' => 'link',
+      'type_name' => $this->content_types[0]->name,
+      'attributes' => array(
+        'class' => 'test-class',
+        'target' => 'default',
+        'rel' => FALSE,
+      ),
+    );
+    
+    $field = $this->createField($field_settings, 0);
+    //$this->pass('<pre>'. print_r($field, TRUE) .'</pre>');
+    $field_db_info = content_database_info($field);
+
+    $this->acquireNodes(2);
+    
+    $node = node_load($this->nodes[0]->nid);
+    $node->promote = 1; // We want this to show on front page for the teaser test.
+    $node->{$field['field_name']}[0] = $this->createLink('http://www.example.com', 'Test Link');
+    node_save($node);
+    
+    // Does this display on the node page?
+    $this->drupalGet('node/'. $this->nodes[0]->nid);
+    //$this->outputScreenContents('Link field with class', 'link_');
+    $this->assertLinkOnNode($field['field_name'], l('Test Link', 'http://www.example.com', array('attributes' => array('class' => 'test-class'))));
+    
+    // Does this display on the front page?
+    $this->drupalGet('<front>');
+    // reset the zebra!
+    $this->zebra = 0;
+    $this->assertLinkOnNode($field['field_name'], l('Test Link', 'http://www.example.com', array('attributes' => array('class' => 'test-class'))));
+  }
+  
+  function testLinkWithNoFollowOnField() {
+    $this->acquireContentTypes(1);
+    $field_settings = array(
+      'type' => 'link',
+      'widget_type' => 'link',
+      'type_name' => $this->content_types[0]->name,
+      'attributes' => array(
+        'class' => '',
+        'target' => 'default',
+        'rel' => 'nofollow',
+      ),
+    );
+    
+    $field = $this->createField($field_settings, 0);
+    //$this->pass('<pre>'. print_r($field, TRUE) .'</pre>');
+    $field_db_info = content_database_info($field);
+
+    $this->acquireNodes(2);
+    
+    $node = node_load($this->nodes[0]->nid);
+    $node->promote = 1; // We want this to show on front page for the teaser test.
+    $node->{$field['field_name']}[0] = $this->createLink('http://www.example.com', 'Test Link');
+    node_save($node);
+    
+    // Does this display on the node page?
+    $this->drupalGet('node/'. $this->nodes[0]->nid);
+    //$this->outputScreenContents('Link field with class', 'link_');
+    $this->assertLinkOnNode($field['field_name'], l('Test Link', 'http://www.example.com', array('attributes' => array('rel' => 'nofollow'))));
+    
+    // Does this display on the front page?
+    $this->drupalGet('<front>');
+    // reset the zebra!
+    $this->zebra = 0;
+    $this->assertLinkOnNode($field['field_name'], l('Test Link', 'http://www.example.com', array('attributes' => array('rel' => 'nofollow'))));
+  }
+  
+  function testLinkWithNoFollowOnFieldTargetNewWindow() {
+    $this->acquireContentTypes(1);
+    $field_settings = array(
+      'type' => 'link',
+      'widget_type' => 'link',
+      'type_name' => $this->content_types[0]->name,
+      'attributes' => array(
+        'class' => '',
+        'target' => LINK_TARGET_NEW_WINDOW,
+        'rel' => 'nofollow',
+      ),
+    );
+    
+    $field = $this->createField($field_settings, 0);
+    //$this->pass('<pre>'. print_r($field, TRUE) .'</pre>');
+    $field_db_info = content_database_info($field);
+
+    $this->acquireNodes(2);
+    
+    $node = node_load($this->nodes[0]->nid);
+    $node->promote = 1; // We want this to show on front page for the teaser test.
+    $node->{$field['field_name']}[0] = $this->createLink('http://www.example.com', 'Test Link');
+    node_save($node);
+    
+    // Does this display on the node page?
+    $this->drupalGet('node/'. $this->nodes[0]->nid);
+    //$this->outputScreenContents('Link field with class', 'link_');
+    $this->assertLinkOnNode($field['field_name'], l('Test Link', 'http://www.example.com', array('attributes' => array('target' => '_blank', 'rel' => 'nofollow'))));
+    //$this->pass($this->content);
+    
+    // Does this display on the front page?
+    $this->drupalGet('<front>');
+    // reset the zebra!
+    $this->zebra = 0;
+    $this->assertLinkOnNode($field['field_name'], l('Test Link', 'http://www.example.com', array('attributes' => array('target' => '_blank', 'rel' => 'nofollow'))));
+  }
+  
+  /**
+   * Trying to reproduce exactly what's in issue #664990
+   *
+   * http://drupal.org/node/664990
+   */
+  function testLinkWithNoFollowOnFieldTargetNewWindowAndAClass() {
+    $this->acquireContentTypes(1);
+    $field_settings = array(
+      'type' => 'link',
+      'widget_type' => 'link',
+      'type_name' => $this->content_types[0]->name,
+      'attributes' => array(
+        'class' => 'testlink',
+        'target' => LINK_TARGET_NEW_WINDOW,
+        'rel' => 'nofollow',
+      ),
+    );
+    
+    $field = $this->createField($field_settings, 0);
+    //$this->pass('<pre>'. print_r($field, TRUE) .'</pre>');
+    $field_db_info = content_database_info($field);
+
+    $this->acquireNodes(2);
+    
+    $node = node_load($this->nodes[0]->nid);
+    $node->promote = 1; // We want this to show on front page for the teaser test.
+    $node->{$field['field_name']}[0] = $this->createLink('http://www.example.com', 'Test Link');
+    node_save($node);
+    
+    // Does this display on the node page?
+    $this->drupalGet('node/'. $this->nodes[0]->nid);
+    //$this->outputScreenContents('Link field with class', 'link_');
+    $this->assertLinkOnNode($field['field_name'], l('Test Link', 'http://www.example.com', array('attributes' => array('class' => 'testlink', 'target' => '_blank', 'rel' => 'nofollow'))));
+    //$this->pass($this->content);
+    
+    // Does this display on the front page?
+    $this->drupalGet('<front>');
+    // reset the zebra!
+    $this->zebra = 0;
+    $this->assertLinkOnNode($field['field_name'], l('Test Link', 'http://www.example.com', array('attributes' => array('class' => 'testlink', 'target' => '_blank', 'rel' => 'nofollow'))));
+  }
+
+  /**
+   * Another test for http://drupal.org/node/664990
+   */
+  function test_Link_With_Title_Attribute_WithNoFollowOnFieldTargetNewWindowAndAClass_Form() {
+    $this->acquireContentTypes(1);
+    $field_settings = array(
+      'type' => 'link',
+      'widget_type' => 'link',
+      'type_name' => $this->content_types[0]->name,
+      'attributes' => array(
+        'class' => '',
+        'target' => 'default',
+        'rel' => 'nofollow',
+        'title' => '',
+      ),
+    );
+    
+    $field = $this->createField($field_settings, 0);
+    $field_db_info = content_database_info($field);
+    $url_type = str_replace('_', '-', $this->content_types[0]->type);
+  
+    $edit = array();
+    $edit['attributes[class]'] = 'testdata';
+    $edit['attributes[target]'] = LINK_TARGET_NEW_WINDOW;
+    $edit['attributes[rel]'] = 'nofollow';
+
+    $this->drupalPost('admin/content/node-type/'. $url_type .'/fields/'. $field['field_name'],
+                      $edit, t('Save field settings'));
+    $this->assertText(t('Saved field @field_name', array('@field_name' => $field['field_name'])));
+    
+    // So, having saved this field_name, let's see if it works...
+    $this->acquireNodes(1);
+    
+    $node = node_load($this->nodes[0]->nid);
+    
+    $this->drupalGet('node/'. $this->nodes[0]->nid);
+    
+    $edit = array();
+    $edit[$field['field_name'] .'[0][url]'] = 'http://www.example.com/test';
+    $title = 'title_'. $this->randomName(20);
+    $edit[$field['field_name'] .'[0][title]'] = $title;
+    
+    $this->drupalPost('node/'. $this->nodes[0]->nid .'/edit', $edit, t('Save'));
+    
+    // Make sure we get a new version!
+    $node = node_load($this->nodes[0]->nid, NULL, TRUE);
+    $this->assertText(t('@type @title has been updated.',
+                        array('@title' => $node->title,
+                              '@type' => $this->content_types[0]->name)));
+    
+    $this->drupalGet('node/'. $node->nid);
+    $this->assertText($title, 'Make sure the link title/text shows');
+    //$this->assertRaw(' title="test_data"', "Do we show the title?");
+    $this->assertLinkOnNode($field['field_name'],
+                            l($title,
+                              'http://www.example.com/test',
+                              array('attributes' => array('target' => '_blank',
+                                                          'rel' => 'nofollow',
+                                                          'class' => 'testdata'))));
+    //$this->pass($this->content);
+  }
+  
+  function test_Link_With_Title_Attribute() {
+    $this->acquireContentTypes(1);
+    $field_settings = array(
+      'type' => 'link',
+      'widget_type' => 'link',
+      'type_name' => $this->content_types[0]->name,
+      'attributes' => array(
+        'class' => '',
+        'target' => 'default',
+        'rel' => 'nofollow',
+        'title' => 'test_title',
+      ),
+    );
+    
+    $field = $this->createField($field_settings, 0);
+    $field_db_info = content_database_info($field);
+    
+    $this->acquireNodes(1);
+    
+    $node = node_load($this->nodes[0]->nid);
+    
+    $this->drupalGet('node/'. $this->nodes[0]->nid);
+    
+    $edit = array();
+    $edit[$field['field_name'] .'[0][url]'] = 'http://www.example.com/test';
+    
+    $this->drupalPost('node/'. $this->nodes[0]->nid .'/edit', $edit, t('Save'));
+    
+    // Make sure we get a new version!
+    $node = node_load($this->nodes[0]->nid, NULL, TRUE);
+    $this->assertText(t('@type @title has been updated.',
+                        array('@title' => $node->title,
+                              '@type' => $this->content_types[0]->name)));
+    
+    $this->drupalGet('node/'. $node->nid);
+    $this->assertRaw(' title="test_title"', "Do we show the title?");
+    //$this->assertRaw(l('http://www.example.com/test', 'http://www.example.com/test', array('attributes' => array('title' => 'test_title'))));
+  }
+  
+  function test_Link_With_Title_Attribute_form() {
+    $this->acquireContentTypes(1);
+    $field_settings = array(
+      'type' => 'link',
+      'widget_type' => 'link',
+      'type_name' => $this->content_types[0]->name,
+      'attributes' => array(
+        'class' => '',
+        'target' => 'default',
+        'rel' => 'nofollow',
+        'title' => '',
+      ),
+    );
+    
+    $field = $this->createField($field_settings, 0);
+    $field_db_info = content_database_info($field);
+    $url_type = str_replace('_', '-', $this->content_types[0]->type);
+  
+    $edit = array('attributes[title]' => 'test_data');
+
+    $this->drupalPost('admin/content/node-type/'. $url_type .'/fields/'. $field['field_name'],
+                      $edit, t('Save field settings'));
+    $this->assertText(t('Saved field @field_name', array('@field_name' => $field['field_name'])));
+    
+    // So, having saved this field_name, let's see if it works...
+    $this->acquireNodes(1);
+    
+    $node = node_load($this->nodes[0]->nid);
+    
+    $this->drupalGet('node/'. $this->nodes[0]->nid);
+    
+    $edit = array();
+    $edit[$field['field_name'] .'[0][url]'] = 'http://www.example.com/test';
+    $title = 'title_'. $this->randomName(20);
+    $edit[$field['field_name'] .'[0][title]'] = $title;
+    
+    $this->drupalPost('node/'. $this->nodes[0]->nid .'/edit', $edit, t('Save'));
+    
+    // Make sure we get a new version!
+    $node = node_load($this->nodes[0]->nid, NULL, TRUE);
+    $this->assertText(t('@type @title has been updated.',
+                        array('@title' => $node->title,
+                              '@type' => $this->content_types[0]->name)));
+    
+    $this->drupalGet('node/'. $node->nid);
+    $this->assertText($title, 'Make sure the link title/text shows');
+    $this->assertRaw(' title="test_data"', "Do we show the title?");
+  }
+  
+  /**
+   * When the title attribute matches the link title, we need to suppress
+   * the title attribute.
+   */
+  function test_Link_With_Title_Attribute_Not_Shown_form() {
+    $this->acquireContentTypes(1);
+    $field_settings = array(
+      'type' => 'link',
+      'widget_type' => 'link',
+      'type_name' => $this->content_types[0]->name,
+      'attributes' => array(
+        'class' => '',
+        'target' => 'default',
+        'rel' => 'nofollow',
+        'title' => '',
+      ),
+    );
+    
+    $common_title = 'title_'. $this->randomName(20);
+    
+    $field = $this->createField($field_settings, 0);
+    $field_db_info = content_database_info($field);
+    $url_type = str_replace('_', '-', $this->content_types[0]->type);
+  
+    $edit = array('attributes[title]' => $common_title);
+
+    $this->drupalPost('admin/content/node-type/'. $url_type .'/fields/'. $field['field_name'],
+                      $edit, t('Save field settings'));
+    $this->assertText(t('Saved field @field_name', array('@field_name' => $field['field_name'])));
+    
+    // So, having saved this field_name, let's see if it works...
+    $this->acquireNodes(1);
+    
+    $node = node_load($this->nodes[0]->nid);
+    
+    $this->drupalGet('node/'. $this->nodes[0]->nid);
+    
+    $edit = array();
+    $edit[$field['field_name'] .'[0][url]'] = 'http://www.example.com/test';
+    $edit[$field['field_name'] .'[0][title]'] = $common_title;
+    
+    $this->drupalPost('node/'. $this->nodes[0]->nid .'/edit', $edit, t('Save'));
+    
+    // Make sure we get a new version!
+    $node = node_load($this->nodes[0]->nid, NULL, TRUE);
+    $this->assertText(t('@type @title has been updated.',
+                        array('@title' => $node->title,
+                              '@type' => $this->content_types[0]->name)));
+    
+    $this->drupalGet('node/'. $node->nid);
+    $this->assertRaw('>'. $common_title .'<', 'Make sure the link title/text shows');
+    $this->assertNoRaw(' title="'. $common_title .'"',
+                       "Do we hide the title, since it matches the link title?");
+    //$this->pass($this->content);
+  }
+  
+  /**
+   * When the title attribute matches the link title, we need to suppress
+   * the title attribute.
+   */
+  function test_Link_without_title_attribute() {
+    $this->acquireContentTypes(1);
+    $field_settings = array(
+      'type' => 'link',
+      'widget_type' => 'link',
+      'type_name' => $this->content_types[0]->name,
+      'attributes' => array(
+        'class' => '',
+        'target' => 'default',
+        'rel' => 'nofollow',
+        'title' => '',
+      ),
+    );
+    
+    $common_title = 'title_'. $this->randomName(20);
+    
+    $field = $this->createField($field_settings, 0);
+    $field_db_info = content_database_info($field);
+    $url_type = str_replace('_', '-', $this->content_types[0]->type);
+  
+    // So, having saved this field_name, let's see if it works...
+    $this->acquireNodes(1);
+    
+    $node = node_load($this->nodes[0]->nid);
+    
+    $this->drupalGet('node/'. $this->nodes[0]->nid);
+    
+    $edit = array();
+    $edit[$field['field_name'] .'[0][url]'] = 'http://www.example.com/test';
+    $edit[$field['field_name'] .'[0][title]'] = $common_title;
+    
+    $this->drupalPost('node/'. $this->nodes[0]->nid .'/edit', $edit, t('Save'));
+    
+    // Make sure we get a new version!
+    $node = node_load($this->nodes[0]->nid, NULL, TRUE);
+    $this->assertText(t('@type @title has been updated.',
+                        array('@title' => $node->title,
+                              '@type' => $this->content_types[0]->name)));
+    
+    $this->drupalGet('node/'. $node->nid);
+    $this->assertRaw('>'. $common_title .'<', 'Make sure the link title/text shows');
+    $this->assertNoRaw(' title=""',
+                       "Do we hide the title, since it is empty?");
+  }
+
+  
+  /**
+   * This test exercises the bugfix for http://drupal.org/node/628902.
+   * It's also making sure that if you set up a link field with 'rel="nofollow"'
+   * and point it internally, then the link does not show rel="nofollow".
+   */
+  function test_rel_nofollow_bug() {
+    $account = $this->drupalCreateUser(array('administer content types', 'access content', 'create page content'));
+    $this->drupalLogin($account);
+
+    // create field
+    $name = strtolower($this->randomName());
+    $field_name = 'field_'. $name;
+    $edit = array(
+      '_add_new_field[label]' => $name,
+      '_add_new_field[field_name]' => $name,
+      '_add_new_field[type]' => 'link',
+      '_add_new_field[widget_type]' => 'link',
+    );
+    $this->drupalPost('admin/content/node-type/page/fields', $edit, t('Save'));
+    $this->drupalPost(NULL, array(
+      'title' => 'value',
+      'title_value' => $name,
+      'attributes[rel]' => 'nofollow'), t('Save field settings'));
+
+    // Is field created?
+    $this->assertRaw(t('Added field %label.', array('%label' => $name)), 'Field added');
+
+    // create page form
+    $this->drupalGet('node/add/page');
+    $this->assertField($field_name . '[0][url]', 'URL found');
+    
+    $input = array(
+      'href' => 'test', // internal link!
+    );
+    
+    $edit = array(
+      'title' => $name,
+      $field_name . '[0][url]' => $input['href'],
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));    
+    
+    $url = $this->getUrl();
+
+    // change to anonymous user
+    $this->drupalLogout();    
+    $this->drupalGet($url);
+    //$this->pass($this->content);
+    $this->assertRaw(l($name, 'test'));//, array('attributes' => array('rel' => ''))));
+  }
+  
+  function test_rel_nofollow_on_external_link() {
+    $account = $this->drupalCreateUser(array('administer content types', 'access content', 'create page content'));
+    $this->drupalLogin($account);
+
+    // create field
+    $name = strtolower($this->randomName());
+    $field_name = 'field_'. $name;
+    $edit = array(
+      '_add_new_field[label]' => $name,
+      '_add_new_field[field_name]' => $name,
+      '_add_new_field[type]' => 'link',
+      '_add_new_field[widget_type]' => 'link',
+    );
+    $this->drupalPost('admin/content/node-type/page/fields', $edit, t('Save'));
+    $this->drupalPost(NULL, array(
+      'title' => 'value',
+      'title_value' => $name,
+      'attributes[rel]' => 'nofollow'), t('Save field settings'));
+
+    // Is field created?
+    $this->assertRaw(t('Added field %label.', array('%label' => $name)), 'Field added');
+
+    // create page form
+    $this->drupalGet('node/add/page');
+    $this->assertField($field_name . '[0][url]', 'URL found');
+    
+    $input = array(
+      'href' => 'http://example.com/' . $this->randomName(), // internal link!
+    );
+    
+    $edit = array(
+      'title' => $name,
+      $field_name . '[0][url]' => $input['href'],
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));    
+    
+    $url = $this->getUrl();
+
+    // change to anonymous user
+    $this->drupalLogout();    
+    $this->drupalGet($url);
+    //$this->pass($this->content);
+    $this->assertRaw(l($name, $input['href'], array('attributes' => array('rel' => 'nofollow'))));
+  }
+  
+  /**
+   * Here we test the fix to #626932, where an empty or bad attributes value on the link at the field
+   * level would cause the site to die in _link_sanitize, when the non-array $field['attributes'] is added
+   * to another array.
+   */
+  function test_bad_attributes_bugfix_null_global_settings() {
+    $account = $this->drupalCreateUser(array('administer content types', 'access content', 'create page content'));
+    $this->drupalLogin($account);
+
+    // create field
+    $name = strtolower($this->randomName());
+    $field_name = 'field_'. $name;
+    $edit = array(
+      '_add_new_field[label]' => $name,
+      '_add_new_field[field_name]' => $name,
+      '_add_new_field[type]' => 'link',
+      '_add_new_field[widget_type]' => 'link',
+    );
+    $this->drupalPost('admin/content/node-type/page/fields', $edit, t('Save'));
+    $this->drupalPost(NULL, array(
+      'title' => 'value',
+      'title_value' => $name), t('Save field settings'));
+
+    // Is field created?
+    $this->assertRaw(t('Added field %label.', array('%label' => $name)), 'Field added');
+    
+    // ruin the stored data in content_node_field.
+    // Here we replace the entire $field with a blank.  The structure of the table
+    // prevents it from being set to a null, sadly.
+    db_query("UPDATE {content_node_field} SET global_settings = '' WHERE field_name = '%s'",
+             $field_name);
+
+    // create page form
+    $this->drupalGet('node/add/page');
+    $this->assertField($field_name . '[0][url]', 'URL found');
+    
+    $input = array(
+      'href' => 'test', // internal link!
+    );
+    
+    $edit = array(
+      'title' => $name,
+      $field_name . '[0][url]' => $input['href'],
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));    
+    
+    $url = $this->getUrl();
+
+    // change to anonymous user
+    $this->drupalLogout();    
+    $this->drupalGet($url);
+    //$this->pass($this->content);
+    $this->assertRaw(l($name, 'test'));//, array('attributes' => array('rel' => ''))));
+  }
+  /**
+   * Here we test the fix to #626932, where an empty or bad attributes value on the link at the field
+   * level would cause the site to die in _link_sanitize, when the non-array $field['attributes'] is added
+   * to another array.
+   */
+  function test_bad_attributes_bugfix_string_attributes() {
+    $account = $this->drupalCreateUser(array('administer content types', 'access content', 'create page content'));
+    $this->drupalLogin($account);
+
+    // create field
+    $name = strtolower($this->randomName());
+    $field_name = 'field_'. $name;
+    $edit = array(
+      '_add_new_field[label]' => $name,
+      '_add_new_field[field_name]' => $name,
+      '_add_new_field[type]' => 'link',
+      '_add_new_field[widget_type]' => 'link',
+    );
+    $this->drupalPost('admin/content/node-type/page/fields', $edit, t('Save'));
+    $this->drupalPost(NULL, array(
+      'title' => 'value',
+      'title_value' => $name), t('Save field settings'));
+
+    // Is field created?
+    $this->assertRaw(t('Added field %label.', array('%label' => $name)), 'Field added');
+    
+    // ruin the stored data in content_node_field.
+    // Here we set $field['attributes'] equal to a string of length 0.
+    db_query("UPDATE {content_node_field} SET global_settings = '%s' WHERE field_name = '%s'",
+             'a:6:{s:10:"attributes";s:0:"";s:7:"display";a:1:{s:10:"url_cutoff";s:2:"80";}s:3:"url";i:0;s:5:"title";s:8:"optional";s:11:"title_value";s:0:"";s:13:"enable_tokens";i:1;}', $field_name);
+
+    // create page form
+    $this->drupalGet('node/add/page');
+    $this->assertField($field_name . '[0][url]', 'URL found');
+    
+    $input = array(
+      'href' => 'test', // internal link!
+    );
+    
+    $edit = array(
+      'title' => $name,
+      $field_name . '[0][url]' => $input['href'],
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));    
+    
+    $url = $this->getUrl();
+
+    // change to anonymous user
+    $this->drupalLogout();    
+    $this->drupalGet($url);
+    //$this->pass($this->content);
+    $this->assertRaw(l($name, 'test'));//, array('attributes' => array('rel' => ''))));
+  }
+  
+  /**
+   * A simple test that just creates a new node type, adds a link field to it, creates a new node of that type, and makes sure
+   * that the node is being displayed.
+   */
+  function testOptionalUrlStaticTitleDisplays() {
+    $this->acquireContentTypes(1);
+    variable_set('node_options_'. $this->content_types[0]->name, array('status', 'promote'));
+    
+    $title_value = $this->randomName();
+    $field_settings = array(
+      'type' => 'link',
+      'widget_type' => 'link',
+      'type_name' => $this->content_types[0]->name,
+      'attributes' => array(), // <-- This is needed or we have an error.
+      'url' => FALSE,
+      'title' => 'value',
+      'title_value' => $title_value,
+    );
+
+    $field = $this->createField($field_settings, 0);
+    //$this->pass('<pre>'. print_r($field, TRUE) .'</pre>');
+    $field_db_info = content_database_info($field);
+
+    $this->acquireNodes(2);
+
+    $node = node_load($this->nodes[0]->nid);
+    $node->promote = 1; // We want this to show on front page for the teaser test.
+    $node->{$field['field_name']}[0] = $this->createLink('', '');
+    node_save($node);
+
+    // Does this display on the node page?
+    $this->drupalGet('node/'. $this->nodes[0]->nid);
+    //$this->assertLinkOnNode($field['field_name'], l('Test Link', 'http://www.example.com'));
+    $this->assertRaw($title_value, 'Title value should be displayed for a blank field if the title is static.');
+    
+    // Does this display on the front page?
+    $this->drupalGet('<front>');
+    // reset the zebra!
+    $this->zebra = 0;
+    //$this->assertLinkOnNode($field['field_name'], l('Test Link', 'http://www.example.com'));
+    $this->assertRaw($title_value, 'Title value should be displayed for a blank field if the title is static.');
+  }
+}

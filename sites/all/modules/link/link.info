@@ -1,0 +1,14 @@
+name = Link
+description = Defines simple link field types.
+dependencies[] = content
+package = CCK
+core = 6.x
+files[] = link.migrate.inc
+
+
+; Information added by drupal.org packaging script on 2013-02-09
+version = "6.x-2.10"
+core = "6.x"
+project = "link"
+datestamp = "1360451917"
+

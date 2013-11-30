@@ -1,0 +1,43 @@
+/* Small Size */
+
+
+.donations_thermometer .gauge-Small{
+	width: 37px;
+	height: 211px;
+	position:relative;
+	background: #333 url(gauge-small.gif) top left no-repeat;
+}
+
+.donations_thermometer .gauge-Small .current-value {
+	position:absolute;
+	left: 0px;
+	bottom: 0px;
+	text-align: center;
+	width: 100%;
+	background: red url(gauge-small.gif) bottom right no-repeat;
+}
+
+/* Large Size */
+
+
+.donations_thermometer .gauge-Large{
+	width: 77px;
+	height: 442px;
+	position:relative;
+	background: #333 url(gauge.gif) top left no-repeat;
+}
+.donations_thermometer .gauge-Large .current-value {
+	position:absolute;
+	left: 0px;
+	bottom: 0px;
+	text-align: center;
+	width: 100%;
+	background: red url(gauge.gif) bottom right no-repeat;
+}
+
+/* General Size */
+
+.donations_thermometer .gauge-Large .current-value p,
+.donations_thermometer .gauge-Small .current-value p {
+	display:none;
+}

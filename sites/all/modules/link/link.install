@@ -1,0 +1,137 @@
+<?php
+
+/**
+ * @file
+ * Install file for the link module.
+ */
+
+/**
+ * Implementation of hook_install().
+ */
+function link_install() {
+  drupal_load('module', 'content');
+  content_notify('install', 'link');
+}
+
+/**
+* Implementation of hook_uninstall().
+*/
+function link_uninstall() {
+  drupal_load('module', 'content');
+  content_notify('uninstall', 'link');
+}
+
+/**
+* Implementation of hook_enable().
+*/
+function link_enable() {
+  drupal_load('module', 'content');
+  content_notify('enable', 'link');
+}
+
+/**
+* Implementation of hook_disable().
+*/
+function link_disable() {
+  drupal_load('module', 'content');
+  content_notify('disable', 'link');
+}
+
+/**
+ * Removed link.module created tables, move data to content.module tables
+ *
+ * Even though most everyone will not be using this particular update, several
+ * folks have complained that their upgrades of link.module do not work because
+ * of this function being missing when schema expects it. - JCF
+ * And on further review, I'm removing the body, since some of those calls
+ * no longer exist in Drupal 6.  Remember to upgrade from 4.7 to 5 first, and
+ * *then* from 5 to 6.  kthx! -JCF
+ */
+function link_update_1() {
+  $ret = array();
+  // GNDN
+  return $ret;
+}
+
+
+/**
+ * Ensure that content.module is updated before link module.
+ */
+function link_update_6000() {
+  if ($abort = content_check_update('link')) {
+    return $abort;
+  }
+  return array();
+}
+
+/**
+ * Change the database schema to allow NULL values.
+ */
+function link_update_6001() {
+  $ret = array();
+  
+  // Build a list of fields that need updating.
+  $update_fields = array();
+  foreach (content_types_install() as $type_name => $fields) {
+    foreach ($fields as $field) {
+      if ($field['type'] == 'link') {
+        // We only process a given field once.
+        $update_fields[$field['field_name']] = $field;
+      }
+    }
+  }
+  
+  // Update each field's storage to match the current definition.
+  foreach ($update_fields as $field) {
+    $db_info = content_database_info($field);
+    foreach ($db_info['columns'] as $column) {
+      db_change_field($ret, $db_info['table'], $column['column'], $column['column'], $column);
+      $ret[] = update_sql("UPDATE {". $db_info['table'] ."} SET ". $column['column'] ." = NULL WHERE ". $column['column'] ." = '' OR ". $column['column'] ." = 'N;'");
+    }
+  }
+  
+  // Let CCK re-associate link fields with Link module and activate the fields.
+  content_associate_fields('link');
+  
+  return $ret;
+}
+
+/**
+ * 6.x-2.7 had code that mistakenly wrote 'a:3:{s:6:"target";s:7:"default";s:5:"class";s:0:"";s:3:"rel";s:0:"";}'
+ * to the attributes field, when it should have written NULL.
+ *
+ * This fixes that.  Ticket #626932.
+ */
+function link_update_6002() {
+  $ret = array();
+  
+  // Build a list of fields that need updating.
+  $update_fields = array();
+  foreach (content_types_install() as $type_name => $fields) {
+    foreach ($fields as $field) {
+      if ($field['type'] == 'link') {
+        // We only process a given field once.
+        $update_fields[$field['field_name']] = $field;
+      }
+    }
+  }
+  
+  // Update each field's storage to match the current definition.
+  foreach ($update_fields as $field) {
+    $db_info = content_database_info($field);
+    foreach ($db_info['columns'] as $column) {
+      //db_change_field($ret, $db_info['table'], $column['column'], $column['column'], $column);
+      if (preg_match('/_attributes$/', $column['column'])) {
+        //we can't use update_sql, because it doesn't handle serialized data.
+        $sql = "UPDATE {". $db_info['table'] ."} SET ". $column['column'] ." = NULL WHERE ". $column['column'] ." = '%s'";
+        $result = db_query($sql, 'a:3:{s:6:"target";s:7:"default";s:5:"class";s:0:"";s:3:"rel";s:0:"";}');
+        $ret[] = array('success' => $result !== FALSE, 'query' => check_plain($sql));
+      }
+    }
+  }
+  
+  // Let CCK re-associate link fields with Link module and activate the fields.
+  content_associate_fields('link');
+  
+  return $ret;
+}

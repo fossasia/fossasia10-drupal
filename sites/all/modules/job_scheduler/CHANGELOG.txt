@@ -1,0 +1,17 @@
+$Id: CHANGELOG.txt,v 1.6 2010/09/14 19:09:49 alexb Exp $
+
+Job Scheduler 6.x 1.0 Beta 3, 2010-09-14
+----------------------------------------
+
+- Fix notice.
+
+Job Scheduler 6.x 1.0 Beta 2, 2010-09-12
+----------------------------------------
+
+- Replace FEEDS_REQUEST_TIME with JOB_SCHEDULER_REQUEST_TIME.
+- Fix indexes.
+
+Job Scheduler 6.x 1.0 Beta 1, 2010-09-11
+----------------------------------------
+
+- Initial commit: schedule execution at predetermined time, periodic scheduling.

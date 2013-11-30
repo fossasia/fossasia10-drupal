@@ -1,0 +1,12 @@
+name = Donations Thermometer
+description = "Allows creation of a thermometer block to visually show amount of donations etc"
+package = Other
+version = "6.x-1.x"
+core = "6.x"
+
+; Information added by drupal.org packaging script on 2010-05-14
+version = "6.x-1.1"
+core = "6.x"
+project = "donations_thermometer"
+datestamp = "1273796405"
+

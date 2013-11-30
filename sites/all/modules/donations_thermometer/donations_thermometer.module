@@ -1,0 +1,176 @@
+<?php
+// $Id: donations_thermometer.module,v 1.2.2.1 2010/05/14 00:13:52 sejtraav Exp $
+
+/**
+* @file
+* Allows creation of a progress bar block to visually show amount of donations etc
+*/
+
+
+/** 
+* Implementation of hook_menu().
+*/
+function donations_thermometer_menu() {
+
+  $items = array();
+
+  $items['admin/settings/donations_thermometer'] = array(
+    'title' => t('Donations Thermometer Settings'),
+    'description' => t('Edit the settings of the thermometer block'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('donations_thermometer_admin'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+   );
+
+  return $items;
+}
+/**
+* Display help and module information
+* @param section which section of the site we're displaying help 
+* @return help text for section
+*/
+
+
+function donations_thermometer_perm() {
+  return array('administer progress bar');
+} // function onthisdate_perm()
+
+
+
+/**
+ * Implementation of hook_theme().
+ */
+function donations_thermometer_theme($existing, $type, $theme, $path) {
+  return array(
+    'donations_thermometer' => array(
+      'arguments' => array('amount' => NULL, 'target' => NULL, 'currency' => NULL, 'size' => NULL),
+    ),
+  );
+}
+
+function donations_thermometer_block($op='list', $delta=0) {
+  // listing of blocks, such as on the admin/block page
+  if ($op == "list") {
+    $block[0]["info"] = t("Donations Thermometer");
+    return $block;
+  } 
+  else if ($op == 'view') {
+
+    // set up the block
+
+ /* REMOVE   drupal_add_js(drupal_get_path('module', 'donations_thermometer') .'/donations_thermometer.js');
+    		 drupal_add_css(drupal_get_path('module', 'donations_thermometer') .'/donations_thermometer.css');
+*/
+
+
+
+    $amount = variable_get('donations_thermometer_amount', 50);
+    $target = variable_get('donations_thermometer_target', 100);
+/* REMOVE    $percent = ($amount/$target)*100; */
+    $currency = variable_get('donations_thermometer_currency', '$');
+    $size = variable_get('donations_thermometer_size', 'large');
+
+    $block['subject'] = 'Donations Thermometer';
+    
+/* REMOVE    $block['content'] = '
+    <style>.gauge-' . $size . ' .current-value {height:'. $percent .'%;}
+</style>
+    <div class="donations_thermometer"> */
+    $block['content'] = theme('donations_thermometer', $amount, $target, $currency, $size);
+
+    return $block;
+  }
+}
+
+/**
+ * Theme a donations thermometer.
+**/
+function theme_donations_thermometer($amount, $target, $currency, $size = 'large') {
+  drupal_add_js(drupal_get_path('module', 'donations_thermometer') .'/donations_thermometer.js');
+  drupal_add_css(drupal_get_path('module', 'donations_thermometer') .'/donations_thermometer.css');
+  
+  $percent = ($amount/$target)*100;
+  return '<div class="donations_thermometer">
+
+
+    <div class="gauge-' . $size . '">
+    <div class="current-value" id="campaign-progress-current" style="height:'. $percent .'%;">
+    <p>'. $percent .'% </p>
+    </div>
+    </div>
+    <p><span class="donations_thermometer-label"> Current Amount:</span><span class="donations_thermometer-amount"> '. $currency . $amount .'</span></p><p><span class="donations_thermometer-label">Target:</span><span class="donations_thermometer-amount"> '. $currency . $target .'</span></p></div>';
+ }
+
+function donations_thermometer_admin() {
+
+  $form['donations_thermometer_target'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Target'),
+    '#default_value' => variable_get('donations_thermometer_target', 100),
+    '#size' => 9,
+    '#maxlength' => 10,
+    '#description' => t("The target."),
+    '#required' => TRUE,
+  );
+  $form['donations_thermometer_amount'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Current Amount'),
+    '#default_value' => variable_get('donations_thermometer_amount', 50),
+    '#size' => 9,
+    '#maxlength' => 10,
+    '#description' => t("The amount."),
+    '#required' => TRUE,
+  );
+  $form['donations_thermometer_currency'] = array(
+    '#type' => 'select',
+    '#title' => t('Currency'),
+    '#default_value' => variable_get('donations_thermometer_currency', '$'),
+    '#options' => array(
+    '$' => '$', 
+    '&pound;' => 'Pound',
+    '&yen;' => 'Yen',
+    '&euro;' => 'Euro',
+    '' => t('None'),
+    ),
+    '#description' => t("Choose a currency(if applicable) to be used with your amounts")
+  );
+ $form['donations_thermometer_size'] = array(
+    '#type' => 'select',
+    '#title' => t('Size'),
+    '#default_value' => variable_get('donations_thermometer_size', 'Large'),
+    '#options' => array(
+    'Large' => 'Large', 
+    'Small' => 'Small',
+    ),
+    '#description' => t("Choose what size to display the thermometer.")
+  );
+  
+  
+ return system_settings_form($form);
+}
+
+function donations_thermometer_admin_validate($form, &$form_state) {
+  $amount = $form_state['values']['donations_thermometer_amount'];
+  $total = $form_state['values']['donations_thermometer_target'];
+  
+  if (!is_numeric($amount)) {
+    form_set_error('donations_thermometer_$amount', t('You must select a number for the current amount.'));
+  }
+  else if ($amount < 0) {
+    form_set_error('donations_thermometer_$amount', t('Current Amount must be positive.'));
+  }
+  
+  if (!is_numeric($total)) {
+    form_set_error('donations_thermometer_$total', t('You must select a number for the target amount.'));
+  }
+  else if ($total <= 0) {
+    form_set_error('donations_thermometer_$total', t('Target Amount must be positive.'));
+  }
+  	
+  	
+  	if ($amount > $total) {
+  	form_set_error('donations_thermometer_$amount', t('Current Amount must be equal to or less than the target amount.'));
+  	}
+}
+

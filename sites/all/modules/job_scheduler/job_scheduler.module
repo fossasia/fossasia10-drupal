@@ -1,0 +1,28 @@
+<?php
+// $Id: job_scheduler.module,v 1.2 2010/09/12 05:25:55 alexb Exp $
+
+/**
+ * @file
+ * job scheduler module.
+ */
+
+define('JOB_SCHEDULER_REQUEST_TIME', time());
+
+/**
+ * Implementation of hook_cron().
+ */
+function job_scheduler_cron() {
+  job_scheduler()->cron();
+}
+
+/**
+ * Return a JobScheduler object.
+ */
+function job_scheduler() {
+  static $included;
+  if (!$included) {
+    require './'. drupal_get_path('module', 'job_scheduler') ."/JobScheduler.inc";
+    $included = TRUE;
+  }
+  return JobScheduler::instance();
+}

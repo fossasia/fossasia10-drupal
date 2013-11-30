@@ -1,0 +1,179 @@
+<?php
+
+/**
+ * Implementation of hook_update_1(). This is a placeholder in case table
+ * installation is ever necessary for the module.
+ */
+function logintoboggan_update_1() {
+  return array();
+}
+
+/**
+ * Implementation of hook_update_2()
+ */
+function logintoboggan_update_2() {
+  // get all serialized user data.
+  $users = db_query('SELECT uid, data FROM {users}');
+  while($user = db_fetch_object($users)) {
+    $data = unserialize($user->data);
+    $updated_data = array();
+    // Extract conf_mail and conf_pass from the user's data
+    if (is_array($data)) {
+      foreach($data as $key => $value) {
+        if (!in_array($key, array('conf_mail', 'conf_pass'))) {
+          $updated_data[$key] = $value;
+        }
+      }
+      // reinsert the cleaned data for the user
+      $updated_data = serialize($updated_data);
+      db_query("UPDATE {users} SET data = '%s' WHERE uid = %d", $updated_data, $user->uid);
+    }
+  }
+
+  drupal_set_message(t('logintoboggan cleaning of user data successful'));
+  return array();
+}
+
+/**
+ * Implementation of hook_update_3()
+ */
+function logintoboggan_update_3() {
+
+  if (variable_get('reg_passwd_set', 0) == 2) {
+    variable_set('reg_passwd_set', 1);
+  }
+  return array();
+}
+
+/**
+ * Implementation of hook_update_4()
+ */
+function logintoboggan_update_4() {
+
+  if (variable_get('toboggan_role', 2) == 1) {
+    variable_set('toboggan_role', 2);
+    drupal_set_message(t('Your previous setting for the logintoboggan pre-auth role was the anonymous user role, which is no longer allowed. The pre-auth role has now been set to the authenticated user role for your site. <em>Because of this change, all unvalidated users on your site now have authenticated user permissions!</em> If you wish to retain the previous functionality, create a new user role with the same access permissions as the anonymous user, and set the logintoboggan pre-auth role to the newly created role. You will also need to manually add any previously unvalidated users to the newly created pre-auth role.'), 'error');
+  }
+  return array();
+}
+
+/**
+ * Implementation of hook_update_5()
+ */
+function logintoboggan_update_5() {
+  // get all profile fields.
+  $fields = db_query('SELECT fid, name FROM {profile_fields}');
+  while($field = db_fetch_object($fields)) {
+    $fids[$field->fid] = $field->name;
+    $where[] = "data LIKE '%%%s%%'";
+  }
+  if (isset($fids)) {
+    // get all users with any profile fields in their user data.
+    $users = db_query('SELECT uid, data FROM {users} WHERE '. implode(' OR ', $where), $fids);
+    while($user = db_fetch_object($users)) {
+      $data = unserialize($user->data);
+      $updated_data = array();
+      // Extract any profile values from the user's data.
+      if (is_array($data)) {
+        foreach($data as $key => $value) {
+          if (!in_array($key, $fids)) {
+            $updated_data[$key] = $value;
+          }
+          elseif ($value) {
+            // reinsert profile data into profile_values table.
+            db_query("INSERT INTO {profile_values} VALUES (%d, %d, '%s')", array_search($key, $fids), $user->uid, $value);
+          }
+        }
+        // reinsert the cleaned data for the user
+        $updated_data = serialize($updated_data);
+        db_query("UPDATE {users} SET data = '%s' WHERE uid = %d", $updated_data, $user->uid);
+      }
+    }
+  }
+
+  drupal_set_message(t('logintoboggan cleaning of user/profile data successful'));
+  return array();
+}
+
+/**
+ * Implementation of hook_update_6()
+ */
+function logintoboggan_update_6() {
+  variable_del('toboggan_display_logged_in');
+  return array();
+}
+
+/**
+ * 6.x database changes.
+ */
+
+// Better variable names.
+function logintoboggan_update_6000() {
+  // This one no longer exists.
+  variable_del('reg_passwd_set');
+
+  // Build defaults for existing variables.
+  $defaults = array(
+    'toboggan_block_type' => 0,
+    'toboggan_block_msg' => '',
+    'login_with_mail' => 0,
+    'email_reg_confirm' => 0,
+    'toboggan_role' => DRUPAL_AUTHENTICATED_RID,
+    'toboggan_redirect_on_register' => '',
+    'toboggan_redirect_on_confirm' => '',
+    'login_successful' => 0,
+    'toboggan_min_pass_length' => 0,
+  );
+
+  // Rename poorly named variables. Note that we're not renaming
+  // 'logintoboggan_immediate_login_on_register' here, as that variable
+  // name is ok.
+  $variables = array(
+    'toboggan_block_type' => 'logintoboggan_login_block_type',
+    'toboggan_block_msg' => 'logintoboggan_login_block_message',
+    'login_with_mail' => 'logintoboggan_login_with_email',
+    'email_reg_confirm' => 'logintoboggan_confirm_email_at_registration',
+    'toboggan_role' => 'logintoboggan_pre_auth_role',
+    'toboggan_redirect_on_register' => 'logintoboggan_redirect_on_register',
+    'toboggan_redirect_on_confirm' => 'logintoboggan_redirect_on_confirm',
+    'login_successful' => 'logintoboggan_login_successful_message',
+    'toboggan_min_pass_length' => 'logintoboggan_minimum_password_length',
+  );
+
+  foreach ($variables as $old_name => $new_name) {
+    $value = variable_get($old_name, $defaults[$old_name]);
+    variable_set($new_name, $value);
+  	variable_del($old_name);
+  }
+
+  return array();
+}
+
+// Alert admins to change in 'Redirect path on confirmation' setting.
+function logintoboggan_update_6001() {
+  drupal_set_message(t("Please note that the behavior of LoginToboggan's <cite>Redirect path on confirmation</cite> setting has changed in the case where users are NOT setting their own password on registration. The previous behavior was to automatically redirect the user to <cite>user/%uid/edit</cite>, with a final destination of the <cite>Redirect path on confirmation</cite> setting. This behavior has been removed. To replicate it, the path must be explicitly declared now. Ex: to have the user visit their edit page, with a final destination of node/foo, you would use <cite>user/%uid/edit?destination=node/foo</cite>."));
+  return array();
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function logintoboggan_uninstall() {
+  $variables = array(
+    'logintoboggan_login_block_type',
+    'logintoboggan_login_block_message',
+    'logintoboggan_login_with_email',
+    'logintoboggan_confirm_email_at_registration',
+    'logintoboggan_pre_auth_role',
+    'logintoboggan_purge_unvalidated_user_interval',
+    'logintoboggan_redirect_on_register',
+    'logintoboggan_redirect_on_confirm',
+    'logintoboggan_login_successful_message',
+    'logintoboggan_minimum_password_length',
+    'logintoboggan_immediate_login_on_register',
+    'logintoboggan_override_destination_parameter',
+  );
+  foreach ($variables as $variable) {
+  	variable_del($variable);
+  }
+}

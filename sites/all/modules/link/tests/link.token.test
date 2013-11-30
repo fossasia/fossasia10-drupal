@@ -1,0 +1,531 @@
+<?php
+
+/**
+ * @file
+ * Contains simpletests making sure token integration works.
+ */
+
+/**
+ * Testing that tokens can be used in link titles
+ */
+class LinkTokenTest extends ContentCrudTestCase {
+
+  public $permissions = array(
+      'access content',
+      'administer content types',
+      'administer nodes',
+      'administer filters',
+      'access comments',
+      'post comments',
+      'post comments without approval',
+      'access administration pages',
+  );
+  
+  /**
+   * Implementation of getInfo().
+   */
+  function getInfo() {
+    return array(
+      'name' => t('Link tokens - browser test'),
+      'description' => t('Tests including tokens in link titles, making sure they appear in node views. <strong>Requires <a href="@token_link">Token module</a>.</strong>'),
+      'group' => t('Link'),
+    );
+  }
+
+  /**
+   * Implementation of setUp().
+   */
+  function setUp() {
+    parent::setUp('content', 'link', 'token');
+  }
+
+  /**
+   * Creates a link field with a required title enabled for user-entered tokens.
+   * Creates a node with a token in the link title and checks the value.
+   */
+  function testUserTokenLinkCreate() {
+    $account = $this->drupalCreateUser(array('administer content types', 'access content', 'create page content'));
+    $this->drupalLogin($account);
+
+    // create field
+    $name = strtolower($this->randomName());
+    $edit = array(
+      '_add_new_field[label]' => $name,
+      '_add_new_field[field_name]' => $name,
+      '_add_new_field[type]' => 'link',
+      '_add_new_field[widget_type]' => 'link',
+    );
+    $this->drupalPost('admin/content/node-type/page/fields', $edit, t('Save'));
+    $this->drupalPost(NULL, array(
+      'title' => 'required',
+      'enable_tokens' => TRUE), t('Save field settings'));
+
+    // Is field created?
+    $this->assertRaw(t('Added field %label.', array('%label' => $name)), 'Field added');
+
+    // create page form
+    $this->drupalGet('node/add/page');
+    $field_name = 'field_' . $name;
+    $this->assertField($field_name . '[0][title]', 'Title found');
+    $this->assertField($field_name . '[0][url]', 'URL found');
+
+    $input = array(
+        'href' => 'http://example.com/' . $this->randomName(),
+        'label' => $this->randomName(),
+    );
+    
+    $this->drupalLogin($account);
+    $this->drupalGet('node/add/page');
+
+    $edit = array(
+      'title' => $input['label'],
+      $field_name . '[0][title]' => $input['label'] . " [type]",
+      $field_name . '[0][url]' => $input['href'],
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));    
+    $url = $this->getUrl();
+
+    // change to anonymous user
+    $this->drupalLogout();    
+    $this->drupalGet($url);
+
+    $this->assertRaw(l($input['label'] . ' page', $input['href']));
+  }
+  
+  
+  /**
+   * Creates a link field with a static title and an admin-entered token.
+   * Creates a node with a link and checks the title value.
+   */
+  function testStaticTokenLinkCreate() {
+    $account = $this->drupalCreateUser(array('administer content types', 'access content', 'create page content'));
+    $this->drupalLogin($account);
+
+    // create field
+    $name = strtolower($this->randomName());
+    $edit = array(
+      '_add_new_field[label]' => $name,
+      '_add_new_field[field_name]' => $name,
+      '_add_new_field[type]' => 'link',
+      '_add_new_field[widget_type]' => 'link',
+    );
+    $this->drupalPost('admin/content/node-type/page/fields', $edit, t('Save'));
+    $this->drupalPost(NULL, array(
+      'title' => 'value',
+      'title_value' => $name . ' [type]',
+      'enable_tokens' => FALSE,
+      ), t('Save field settings'));
+
+    // Is filed created?
+    $this->assertRaw(t('Added field %label.', array('%label' => $name)), 'Field added');
+
+    // create page form
+    $this->drupalGet('node/add/page');
+    $field_name = 'field_' . $name;
+    $this->assertField($field_name . '[0][url]', 'URL found');
+
+    $input = array(
+      'href' => 'http://example.com/' . $this->randomName()
+    );
+
+    $this->drupalLogin($account);
+    $this->drupalGet('node/add/page');
+
+    $edit = array(
+      'title' => $name,
+      $field_name . '[0][url]' => $input['href'],
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));    
+    
+    $url = $this->getUrl();
+
+    // change to anonymous user
+    $this->drupalLogout();    
+    $this->drupalGet($url);
+
+    $this->assertRaw(l($name . ' page', $input['href']));
+  }
+  
+  /**
+   * Creates a link field with a static title and an admin-entered token.
+   * Creates a node with a link and checks the title value.
+   *
+   * Basically, I want to make sure the [title-raw] token works, because it's a
+   * token that changes from node to node, where [type]'s always going to be the
+   * same.
+   */
+  function testStaticTokenLinkCreate2() {
+    $account = $this->drupalCreateUser(array('administer content types', 'access content', 'create page content'));
+    $this->drupalLogin($account);
+
+    // create field
+    $name = strtolower($this->randomName());
+    $edit = array(
+      '_add_new_field[label]' => $name,
+      '_add_new_field[field_name]' => $name,
+      '_add_new_field[type]' => 'link',
+      '_add_new_field[widget_type]' => 'link',
+    );
+    $this->drupalPost('admin/content/node-type/page/fields', $edit, t('Save'));
+    $this->drupalPost(NULL, array(
+      'title' => 'value',
+      'title_value' => $name . ' [title-raw]',
+      'enable_tokens' => FALSE,
+      ), t('Save field settings'));
+
+    // Is field created?
+    $this->assertRaw(t('Added field %label.', array('%label' => $name)), 'Field added');
+
+    // create page form
+    $this->drupalGet('node/add/page');
+    $field_name = 'field_' . $name;
+    $this->assertField($field_name . '[0][url]', 'URL found');
+
+    $input = array(
+      'href' => 'http://example.com/' . $this->randomName()
+    );
+
+    $this->drupalLogin($account);
+    $this->drupalGet('node/add/page');
+
+    $edit = array(
+      'title' => $name,
+      $field_name . '[0][url]' => $input['href'],
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));    
+    
+    $url = $this->getUrl();
+
+    // change to anonymous user
+    $this->drupalLogout();    
+    $this->drupalGet($url);
+
+    $this->assertRaw(l($name .' '. $name, $input['href']));
+  }
+  
+  function test_Link_With_Title_Attribute_token_url_form() {
+    $this->loginWithPermissions($this->permissions);
+    $this->acquireContentTypes(1);
+    $field_settings = array(
+      'type' => 'link',
+      'widget_type' => 'link',
+      'type_name' => $this->content_types[0]->name,
+      'attributes' => array(
+        'class' => '',
+        'target' => 'default',
+        'rel' => 'nofollow',
+        'title' => '',
+      ),
+    );
+    
+    $field = $this->createField($field_settings, 0);
+    //$this->fail('<pre>'. print_r($field, TRUE) .'</pre>');
+    $field_name = $field['field_name'];
+    $field_db_info = content_database_info($field);
+    $url_type = str_replace('_', '-', $this->content_types[0]->type);
+  
+    $edit = array('attributes[title]' => '['. $field_name .'-url]',
+                  'enable_tokens' => FALSE);
+
+    $this->drupalPost('admin/content/node-type/'. $url_type .'/fields/'. $field['field_name'],
+                      $edit, t('Save field settings'));
+    $this->assertText(t('Saved field @field_name', array('@field_name' => $field['field_name'])));
+    
+    // So, having saved this field_name, let's see if it works...
+    $this->acquireNodes(1);
+    
+    $node = node_load($this->nodes[0]->nid);
+    
+    $this->drupalGet('node/'. $this->nodes[0]->nid);
+    
+    $edit = array();
+    $test_link_url = 'http://www.example.com/test';
+    $edit[$field['field_name'] .'[0][url]'] = $test_link_url;
+    $title = 'title_'. $this->randomName(20);
+    $edit[$field['field_name'] .'[0][title]'] = $title;
+    
+    $this->drupalPost('node/'. $this->nodes[0]->nid .'/edit', $edit, t('Save'));
+    
+    // Make sure we get a new version!
+    $node = node_load($this->nodes[0]->nid, NULL, TRUE);
+    $this->assertText(t('@type @title has been updated.',
+                        array('@title' => $node->title,
+                              '@type' => $this->content_types[0]->name)));
+    
+    $this->drupalGet('node/'. $node->nid);
+    $this->assertText($title, 'Make sure the link title/text shows');
+    $this->assertRaw(' title="'. $test_link_url .'"', "Do we show the link url as the title attribute?");
+    $this->assertNoRaw(' title="['. $field_name .'-url]"');
+    $this->assertTrue(module_exists('token'), t('Assure that Token Module is enabled.'));
+    //$this->fail($this->content);
+  }
+  
+  /**
+   * If the title of the link is set to the title attribute, then the title
+   * attribute isn't supposed to show.
+   */
+  function test_Link_With_Title_Attribute_token_title_form() {
+    $this->loginWithPermissions($this->permissions);
+    $this->acquireContentTypes(1);
+    $field_settings = array(
+      'type' => 'link',
+      'widget_type' => 'link',
+      'type_name' => $this->content_types[0]->name,
+      'attributes' => array(
+        'class' => '',
+        'target' => 'default',
+        'rel' => 'nofollow',
+        'title' => '',
+      ),
+    );
+    
+    $field = $this->createField($field_settings, 0);
+    $field_name = $field['field_name'];
+    $field_db_info = content_database_info($field);
+    $url_type = str_replace('_', '-', $this->content_types[0]->type);
+  
+    $edit = array('attributes[title]' => '['. $field_name .'-title]',
+                  'enable_tokens' => FALSE);
+
+    $this->drupalPost('admin/content/node-type/'. $url_type .'/fields/'. $field['field_name'],
+                      $edit, t('Save field settings'));
+    $this->assertText(t('Saved field @field_name', array('@field_name' => $field['field_name'])));
+    
+    // So, having saved this field_name, let's see if it works...
+    $this->acquireNodes(1);
+    
+    $node = node_load($this->nodes[0]->nid);
+    
+    $this->drupalGet('node/'. $this->nodes[0]->nid);
+    
+    $edit = array();
+    $edit[$field['field_name'] .'[0][url]'] = 'http://www.example.com/test';
+    $title = 'title_'. $this->randomName(20);
+    $edit[$field['field_name'] .'[0][title]'] = $title;
+    
+    $this->drupalPost('node/'. $this->nodes[0]->nid .'/edit', $edit, t('Save'));
+    
+    // Make sure we get a new version!
+    $node = node_load($this->nodes[0]->nid, NULL, TRUE);
+    $this->assertText(t('@type @title has been updated.',
+                        array('@title' => $node->title,
+                              '@type' => $this->content_types[0]->name)));
+    
+    $this->drupalGet('node/'. $node->nid);
+    $this->assertText($title, 'Make sure the link title/text shows');
+    $this->assertNoRaw(' title="'. $title .'"', "We should not show the link title as the title attribute?");
+    $this->assertNoRaw(' title="['. $field_name .'-title]"');
+    //$this->fail($this->content);
+  }
+
+  /**
+   *  Trying to set the url to contain a token.
+   */
+  function testUserTokenLinkCreateInURL() {
+    $account = $this->drupalCreateUser(array('administer content types', 'access content', 'create page content'));
+    $this->drupalLogin($account);
+
+    // create field
+    $name = strtolower($this->randomName());
+    $edit = array(
+      '_add_new_field[label]' => $name,
+      '_add_new_field[field_name]' => $name,
+      '_add_new_field[type]' => 'link',
+      '_add_new_field[widget_type]' => 'link',
+    );
+    $this->drupalPost('admin/content/node-type/page/fields', $edit, t('Save'));
+    $this->drupalPost(NULL, array(
+      'title' => 'required',
+      'enable_tokens' => TRUE), t('Save field settings'));
+
+    // Is field created?
+    $this->assertRaw(t('Added field %label.', array('%label' => $name)), 'Field added');
+
+    // create page form
+    $this->drupalGet('node/add/page');
+    $field_name = 'field_' . $name;
+    $this->assertField($field_name . '[0][title]', 'Title found');
+    $this->assertField($field_name . '[0][url]', 'URL found');
+
+    $input = array(
+        'href' => 'http://example.com/' . $this->randomName(),
+        'label' => $this->randomName(),
+    );
+    
+    $this->drupalLogin($account);
+    $this->drupalGet('node/add/page');
+
+    $edit = array(
+      'title' => $input['label'],
+      $field_name . '[0][title]' => $input['label'],
+      $field_name . '[0][url]' => $input['href'] . "/[type]",
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));    
+    $url = $this->getUrl();
+
+    // change to anonymous user
+    $this->drupalLogout();    
+    $this->drupalGet($url);
+
+    $this->assertRaw(l($input['label'], $input['href'] .'/page'));
+    //$this->fail($this->content);
+  }
+  
+  /**
+   *  If 'enable_tokens' is off, then the url shouldn't be filtered through the token module.
+   */
+  function testUserTokenLinkCreateInURLFail() {
+    $account = $this->drupalCreateUser(array('administer content types', 'access content', 'create page content'));
+    $this->drupalLogin($account);
+
+    // create field
+    $name = strtolower($this->randomName());
+    $edit = array(
+      '_add_new_field[label]' => $name,
+      '_add_new_field[field_name]' => $name,
+      '_add_new_field[type]' => 'link',
+      '_add_new_field[widget_type]' => 'link',
+    );
+    $this->drupalPost('admin/content/node-type/page/fields', $edit, t('Save'));
+    $this->drupalPost(NULL, array(
+      'title' => 'required',
+      'enable_tokens' => FALSE), t('Save field settings'));
+
+    // Is field created?
+    $this->assertRaw(t('Added field %label.', array('%label' => $name)), 'Field added');
+
+    // create page form
+    $this->drupalGet('node/add/page');
+    $field_name = 'field_' . $name;
+    $this->assertField($field_name . '[0][title]', 'Title found');
+    $this->assertField($field_name . '[0][url]', 'URL found');
+
+    $input = array(
+        'href' => 'http://example.com/' . $this->randomName(),
+        'label' => $this->randomName(),
+    );
+    
+    $this->drupalLogin($account);
+    $this->drupalGet('node/add/page');
+
+    $edit = array(
+      'title' => $input['label'],
+      $field_name . '[0][title]' => $input['label'],
+      $field_name . '[0][url]' => $input['href'] . "/[type]",
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));    
+    $url = $this->getUrl();
+
+    // change to anonymous user
+    $this->drupalLogout();    
+    $this->drupalGet($url);
+
+    $this->assertRaw(l($input['label'], $input['href'] .'/[type]'));
+    //$this->fail($this->content);
+  }
+  
+  /**
+   *  Trying to set the url to contain a token.
+   */
+  function testUserTokenLinkCreateInURL2() {
+    $account = $this->drupalCreateUser(array('administer content types', 'access content', 'create page content'));
+    $this->drupalLogin($account);
+
+    // create field
+    $name = strtolower($this->randomName());
+    $edit = array(
+      '_add_new_field[label]' => $name,
+      '_add_new_field[field_name]' => $name,
+      '_add_new_field[type]' => 'link',
+      '_add_new_field[widget_type]' => 'link',
+    );
+    $this->drupalPost('admin/content/node-type/page/fields', $edit, t('Save'));
+    $this->drupalPost(NULL, array(
+      'title' => 'required',
+      'enable_tokens' => TRUE), t('Save field settings'));
+
+    // Is field created?
+    $this->assertRaw(t('Added field %label.', array('%label' => $name)), 'Field added');
+
+    // create page form
+    $this->drupalGet('node/add/page');
+    $field_name = 'field_' . $name;
+    $this->assertField($field_name . '[0][title]', 'Title found');
+    $this->assertField($field_name . '[0][url]', 'URL found');
+
+    $input = array(
+        'href' => 'http://example.com/' . $this->randomName(),
+        'label' => $this->randomName(),
+    );
+    
+    $this->drupalLogin($account);
+    $this->drupalGet('node/add/page');
+
+    $edit = array(
+      'title' => $input['label'],
+      $field_name . '[0][title]' => $input['label'],
+      $field_name . '[0][url]' => $input['href'] . "/[author-uid]",
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));    
+    $url = $this->getUrl();
+
+    // change to anonymous user
+    $this->drupalLogout();    
+    $this->drupalGet($url);
+
+    $this->assertRaw(l($input['label'], $input['href'] .'/'. $account->uid));
+  }
+
+  /**
+   * Creates a link field with a required title enabled for user-entered tokens.
+   * Creates a node with a token in the link title and checks the value.
+   */
+  function testHostTokenLinkCreate() {
+    $account = $this->drupalCreateUser(array('administer content types', 'access content', 'create page content'));
+    $this->drupalLogin($account);
+
+    // create field
+    $name = strtolower($this->randomName());
+    $edit = array(
+      '_add_new_field[label]' => $name,
+      '_add_new_field[field_name]' => $name,
+      '_add_new_field[type]' => 'link',
+      '_add_new_field[widget_type]' => 'link',
+    );
+    $this->drupalPost('admin/content/node-type/page/fields', $edit, t('Save'));
+    $this->drupalPost(NULL, array(
+      'title' => 'required',
+      'enable_tokens' => TRUE), t('Save field settings'));
+
+    // Is field created?
+    $this->assertRaw(t('Added field %label.', array('%label' => $name)), 'Field added');
+
+    // create page form
+    $this->drupalGet('node/add/page');
+    $field_name = 'field_' . $name;
+    $this->assertField($field_name . '[0][title]', 'Title found');
+    $this->assertField($field_name . '[0][url]', 'URL found');
+
+    $input = array(
+        'href' => 'http://example.com/' . $this->randomName(),
+        'label' => $this->randomName(),
+    );
+    
+    $this->drupalLogin($account);
+    $this->drupalGet('node/add/page');
+
+    $edit = array(
+      'title' => $input['label'],
+      $field_name . '[0][title]' => $input['label'] . " [$field_name-host]",
+      $field_name . '[0][url]' => $input['href'],
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));    
+    $url = $this->getUrl();
+
+    // change to anonymous user
+    $this->drupalLogout();    
+    $this->drupalGet($url);
+
+    $this->assertRaw(l($input['label'] . ' example.com', $input['href']));
+  }
+}

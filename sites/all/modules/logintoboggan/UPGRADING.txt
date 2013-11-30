@@ -1,0 +1,21 @@
+
+*******************************************************
+    UPGRADING.txt for logintoboggan.module for Drupal
+*******************************************************
+
+5.x to 6.x:
+
+1. The 'Set password & Immediate login' functionality has been split out into
+   separate 'Set password' and 'Immediate login' features.
+
+2. The behavior of LoginToboggan's 'Redirect path on Confirmation' setting has
+   changed in the case where users are NOT setting their own password on
+   registration. The previous behavior was to automatically redirect the user
+   to 'user/%uid/edit', with a final destination of the 'Redirect path on
+   Confirmation' setting. This behavior has been removed. To replicate it, the
+   path must be explicitly declared now. 
+     Ex: to have the user visit their edit page, with a final destination of
+         node/foo, you would use: user/%uid/edit?destination=node/foo
+
+3. A new 'Delete unvalidated users after' feature has been added. This feature
+   is handy for automatically cleaning up spam registrations.

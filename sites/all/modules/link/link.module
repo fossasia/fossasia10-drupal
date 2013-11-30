@@ -1,0 +1,467 @@
+<?php
+
+/**
+ * @file
+ * Defines simple link field types.
+ */
+
+define('LINK_EXTERNAL', 'external');
+define('LINK_INTERNAL', 'internal');
+define('LINK_FRONT', 'front');
+define('LINK_EMAIL', 'email');
+define('LINK_NEWS', 'news');
+define('LINK_DOMAINS', 'aero|arpa|asia|biz|com|cat|coop|edu|gov|info|int|jobs|mil|museum|name|nato|net|org|pro|travel|mobi|local');
+// There are many other characters which are legal other than simply a-z - this includes them.
+// html_entity_decode() is buggy in php 4 - we'll put it back here for D7 when 5.x is assumed.
+/*define('LINK_ICHARS', (string) html_entity_decode(implode("", array(
+    "&#x00E6;", // æ
+    "&#x00C6;", // Æ
+    "&#x00F8;", // ø
+    "&#x00D8;", // Ø
+    "&#x00E5;", // å
+    "&#x00C5;", // Å
+    "&#x00E4;", // ä
+    "&#x00C4;", // Ä
+    "&#x00F6;", // ö
+    "&#x00D6;", // Ö
+    "&#x00FC;", // ü
+    "&#x00DC;", // Ü
+  )), ENT_QUOTES, 'UTF-8'));*/
+
+define('LINK_TARGET_DEFAULT', 'default');
+define('LINK_TARGET_NEW_WINDOW', '_blank');
+define('LINK_TARGET_TOP', '_top');
+define('LINK_TARGET_USER', 'user');
+
+/**
+ * Maximum URLs length.
+ */
+define('LINK_URL_MAX_LENGTH', 2048);
+
+/**
+ * Implementation of hook_field_info().
+ */
+function link_field_info() {
+  return array(
+    'link' => array(
+      'label' => t('Link'),
+      'description' => t('Store a title, href, and attributes in the database to assemble a link.'),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_field_settings().
+ */
+function link_field_settings($op, $field) {
+  switch ($op) {
+    case 'form':
+      $form = array(
+        '#theme' => 'link_field_settings',
+      );
+
+      $form['validate_url'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Validate URL'),
+        '#default_value' => isset($field['validate_url']) && ($field['validate_url'] !== '') ? $field['validate_url'] : TRUE,
+        '#description' => t('If checked, the URL field will be verified as a valid URL during validation.'),
+      );
+
+      $form['url'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Optional URL'),
+        '#default_value' => $field['url'],
+        '#return_value' => 'optional',
+        '#description' => t('If checked, the URL field is optional and submitting a title alone will be acceptable. If the URL is omitted, the title will be displayed as plain text.'),
+      );
+
+      $title_options = array(
+        'optional' => t('Optional Title'),
+        'required' => t('Required Title'),
+        'value' => t('Static Title: '),
+        'none' => t('No Title'),
+      );
+
+      $form['title'] = array(
+        '#type' => 'radios',
+        '#title' => t('Link Title'),
+        '#default_value' => isset($field['title']) && ($field['title'] !== '') ? $field['title'] : 'optional',
+        '#options' => $title_options,
+        '#description' => t('If the link title is optional or required, a field will be displayed to the end user. If the link title is static, the link will always use the same title. If <a href="http://drupal.org/project/token">token module</a> is installed, the static title value may use any other node field as its value. Static and token-based titles may include most inline XHTML tags such as <em>strong</em>, <em>em</em>, <em>img</em>, <em>span</em>, etc.'),
+      );
+
+      $form['title_value'] = array(
+        '#type' => 'textfield',
+        '#default_value' => $field['title_value'],
+        '#size' => '46',
+      );
+
+      // Add token module replacements if available
+      if (module_exists('token')) {
+        $form['tokens'] = array(
+          '#type' => 'fieldset',
+          '#collapsible' => TRUE,
+          '#collapsed' => TRUE,
+          '#title' => t('Placeholder tokens'),
+          '#description' => t("The following placeholder tokens can be used in both paths and titles. When used in a path or title, they will be replaced with the appropriate values."),
+        );
+        $form['tokens']['help'] = array(
+          '#value' => theme('token_help', 'node'),
+        );
+
+        $form['enable_tokens'] = array(
+          '#type' => 'checkbox',
+          '#title' => t('Allow user-entered tokens'),
+          '#default_value' => isset($field['enable_tokens']) ? $field['enable_tokens'] : 1,
+          '#description' => t('Checking will allow users to enter tokens in URLs and Titles on the node edit form. This does not affect the field settings on this page.'),
+        );
+      }
+
+      $form['display'] = array(
+        '#tree' => TRUE,
+      );
+      $form['display']['url_cutoff'] = array(
+        '#type' => 'textfield',
+        '#title' => t('URL Display Cutoff'),
+        '#default_value' => isset($field['display']['url_cutoff']) ? $field['display']['url_cutoff'] : '80',
+        '#description' => t('If the user does not include a title for this link, the URL will be used as the title. When should the link title be trimmed and finished with an elipsis (&hellip;)? Leave blank for no limit.'),
+        '#maxlength' => 3,
+        '#size' => 3,
+      );
+
+      $target_options = array(
+        LINK_TARGET_DEFAULT => t('Default (no target attribute)'),
+        LINK_TARGET_TOP => t('Open link in window root'),
+        LINK_TARGET_NEW_WINDOW => t('Open link in new window'),
+        LINK_TARGET_USER => t('Allow the user to choose'),
+      );
+      $form['attributes'] = array(
+        '#tree' => TRUE,
+      );
+      $form['attributes']['target'] = array(
+        '#type' => 'radios',
+        '#title' => t('Link Target'),
+        '#default_value' => empty($field['attributes']['target']) ? LINK_TARGET_DEFAULT : $field['attributes']['target'],
+        '#options' => $target_options,
+      );
+      $form['attributes']['rel'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Rel Attribute'),
+        '#description' => t('When output, this link will have this rel attribute. The most common usage is <a href="http://en.wikipedia.org/wiki/Nofollow">rel=&quot;nofollow&quot;</a> which prevents some search engines from spidering entered links.'),
+        '#default_value' => empty($field['attributes']['rel']) ? '' : $field['attributes']['rel'],
+        '#field_prefix' => 'rel = "',
+        '#field_suffix' => '"',
+        '#size' => 20,
+      );
+      $form['attributes']['class'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Additional CSS Class'),
+        '#description' => t('When output, this link will have this class attribute. Multiple classes should be separated by spaces.'),
+        '#default_value' => empty($field['attributes']['class']) ? '' : $field['attributes']['class'],
+      );
+      $form['attributes']['title'] = array(
+        '#title' => t("Link 'title' Attribute"),
+        '#type' => 'textfield',
+        '#field_prefix' => 'title = "',
+        '#field_suffix' => '"',
+        '#description' => t('When output, links will use this "title" attribute (when different from the link text). Read <a href="http://www.w3.org/TR/WCAG10-HTML-TECHS/#links">WCAG 1.0 Guidelines</a> for links comformances. Tokens values will be evaluated.'),
+        '#default_value' => empty($field['attributes']['title']) ? '' : $field['attributes']['title'],
+      );
+      return $form;
+
+    case 'validate':
+      if ($field['title'] == 'value' && empty($field['title_value'])) {
+        form_set_error('title_value', t('A default title must be provided if the title is a static value'));
+      }
+      break;
+
+    case 'save':
+      return array('attributes', 'display', 'url', 'title', 'title_value', 'enable_tokens', 'validate_url');
+
+    case 'database columns':
+      return array(
+        'url' => array('type' => 'varchar', 'length' => LINK_URL_MAX_LENGTH, 'not null' => FALSE, 'sortable' => TRUE),
+        'title' => array('type' => 'varchar', 'length' => 255, 'not null' => FALSE, 'sortable' => TRUE),
+        'attributes' => array('type' => 'text', 'size' => 'medium', 'not null' => FALSE),
+      );
+
+    case 'views data':
+      module_load_include('inc', 'link', 'views/link.views');
+      return link_views_content_field_data($field);
+  }
+}
+
+/**
+ * Implementation of hook_content_is_empty().
+ */
+function link_content_is_empty($item, $field) {
+  if (empty($item['title']) && empty($item['url'])) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * Implementation of hook_field().
+ */
+function link_field($op, &$node, $field, &$items, $teaser, $page) {
+  module_load_include('inc', 'link');
+  switch ($op) {
+    case 'load':
+      return _link_load($field, $items);
+
+    case 'validate':
+      $optional_field_found = FALSE;
+      if ($field['validate_url'] !== 0 || is_null($field['validate_url']) || !isset($field['validate_url'])) {
+        foreach ($items as $delta => $value) {
+          _link_validate($items[$delta], $delta, $field, $node, $optional_field_found);
+        }
+      }
+
+      if ($field['url'] === 'optional' && $field['title'] === 'optional' && $field['required'] && !$optional_field_found) {
+        form_set_error($field['field_name'] .'][0][title', t('At least one title or URL must be entered.'));
+      }
+      break;
+
+    case 'presave':
+      case 'update':
+      foreach ($items as $delta => $value) {
+        _link_process($items[$delta], $delta, $field, $node);
+      }
+      break;
+
+    case 'sanitize':
+      foreach ($items as $delta => $value) {
+        _link_sanitize($items[$delta], $delta, $field, $node);
+      }
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_widget_info().
+ */
+function link_widget_info() {
+  return array(
+    'link' => array(
+      'label' => 'Link',
+      'field types' => array('link'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_widget().
+ */
+function link_widget(&$form, &$form_state, $field, $items, $delta = 0) {
+  $element = array(
+    '#type' => $field['widget']['type'],
+    '#default_value' => isset($items[$delta]) ? $items[$delta] : '',
+    '#title' => $field['widget']['label'],
+    '#weight' => $field['widget']['weight'],
+    '#description' => $field['widget']['description'],
+    '#required' => $field['required'],
+    '#field' => $field,
+  );
+  return $element;
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function link_theme() {
+  return array(
+    'link_field_settings' => array(
+      'arguments' => array('element' => NULL),
+      'file' => 'link.theme.inc',
+    ),
+    'link_formatter_default' => array(
+      'arguments' => array('element' => NULL),
+      'file' => 'link.theme.inc',
+    ),
+    'link_formatter_plain' => array(
+      'arguments' => array('element' => NULL),
+      'file' => 'link.theme.inc',
+    ),
+    'link_formatter_absolute' => array(
+      'arguments' => array('element' => NULL),
+      'file' => 'link.theme.inc',
+    ),
+    'link_formatter_title_plain' => array(
+      'arguments' => array('element' => NULL),
+      'file' => 'link.theme.inc',
+    ),
+    'link_formatter_url' => array(
+      'arguments' => array('element' => NULL),
+      'file' => 'link.theme.inc',
+    ),
+    'link_formatter_short' => array(
+      'arguments' => array('element' => NULL),
+      'file' => 'link.theme.inc',
+    ),
+    'link_formatter_label' => array(
+      'arguments' => array('element' => NULL),
+      'file' => 'link.theme.inc',
+    ),
+    'link_formatter_separate' => array(
+      'arguments' => array('element' => NULL),
+      'file' => 'link.theme.inc',
+    ),
+    'link' => array(
+      'arguments' => array('element' => NULL),
+      'file' => 'link.theme.inc',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_elements().
+ */
+function link_elements() {
+  $elements = array();
+  $elements['link'] =  array(
+    '#input' => TRUE,
+    '#process' => array('link_process'),
+  );
+  return $elements;
+}
+
+/**
+ * Process the link type element before displaying the field.
+ *
+ * Build the form element. When creating a form using FAPI #process,
+ * note that $element['#value'] is already set.
+ *
+ * The $fields array is in $form['#field_info'][$element['#field_name']].
+ */
+function link_process($element, $edit, $form_state, $form) {
+   module_load_include('inc', 'link');
+   $field = $form['#field_info'][$element['#field_name']];
+   $delta = $element['#delta'];
+   $element['url'] = array(
+     '#type' => 'textfield',
+     '#maxlength' => LINK_URL_MAX_LENGTH,
+     '#title' => t('URL'),
+     '#description' => $element['#description'],
+     '#required' => ($delta == 0 && $field['url'] !== 'optional') ? $element['#required'] : FALSE,
+     '#default_value' => isset($element['#value']['url']) ? $element['#value']['url'] : NULL,
+   );
+   if ($field['title'] != 'none' && $field['title'] != 'value') {
+     $element['title'] = array(
+       '#type' => 'textfield',
+       '#maxlength' => '255',
+       '#title' => t('Title'),
+       '#required' => ($delta == 0 && $field['title'] == 'required') ? $field['required'] : FALSE,
+       '#default_value' => isset($element['#value']['title']) ? $element['#value']['title'] : NULL,
+     );
+   }
+
+   // Initialize field attributes as an array if it is not an array yet.
+   if (!is_array($field['attributes'])) {
+     $field['attributes'] = array();
+   }
+   // Add default atrributes.
+   $field['attributes'] += _link_default_attributes();
+   $attributes = isset($element['#value']['attributes']) ? $element['#value']['attributes'] : $field['attributes'];
+   if (!empty($field['attributes']['target']) && $field['attributes']['target'] == LINK_TARGET_USER) {
+     $element['attributes']['target'] = array(
+       '#type' => 'checkbox',
+       '#title' => t('Open URL in a New Window'),
+       '#return_value' => LINK_TARGET_NEW_WINDOW,
+       '#default_value' => $attributes['target'],
+     );
+   }
+   return $element;
+}
+
+/**
+ * Implementation of hook_field_formatter_info().
+ */
+function link_field_formatter_info() {
+  return array(
+    'default' => array(
+      'label' => t('Title, as link (default)'),
+      'field types' => array('link'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+    'title_plain' => array(
+      'label' => t('Title, as plain text'),
+      'field types' => array('link'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+    'url' => array(
+      'label' => t('URL, as link'),
+      'field types' => array('link'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+    'plain' => array(
+      'label' => t('URL, as plain text'),
+      'field types' => array('link'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+    'absolute' => array(
+      'label' => t('URL, as absolute URL'),
+      'field types' => array('link'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+    'short' => array(
+      'label' => t('Short, as link with title "Link"'),
+      'field types' => array('link'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+    'label' => array(
+      'label' => t('Label, as link with label as title'),
+      'field types' => array('link'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+    'separate' => array(
+      'label' => t('Separate title and URL'),
+      'field types' => array('link'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+  );
+}
+
+function link_token_list($type = 'all') {
+  if ($type == 'field' || $type == 'all') {
+    $tokens = array();
+
+    $tokens['link']['url'] = t("Link URL");
+    $tokens['link']['title'] = t("Link title");
+    $tokens['link']['view'] = t("Formatted html link");
+    $tokens['link']['host'] = t("Link host");
+
+    return $tokens;
+  }
+}
+
+function link_token_values($type, $object = NULL) {
+  if ($type == 'field') {
+    $item = $object[0];
+
+    $tokens['url'] = $item['url'];
+    $tokens['title'] = $item['title'];
+    $tokens['view'] = isset($item['view']) ? $item['view'] : '';
+    $host = @parse_url($item['url']);
+    $tokens['host'] = isset($host['host']) ? $host['host'] : '';
+
+    return $tokens;
+  }
+}
+
+/**
+ * Implementation of hook_views_api().
+ */
+function link_views_api() {
+  return array(
+    'api' => 2,
+    'path' => drupal_get_path('module', 'link') .'/views',
+  );
+}
+/**
+ * Implements hook_migrate_api().
+ */
+function link_migrate_api() {
+  return array('api' => 2);
+}
